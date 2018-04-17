@@ -1,0 +1,26 @@
+<project name="tvc" basedir="." default="compile">
+  <description>Videoton TVC Emulator</description>
+  <property name="src" location="."/>
+  <property name="dist" location="dist"/>
+  <property name="build" location="build"/>
+  <target name="init">
+    <mkdir dir="${build}"/>
+  </target>
+  <target name="compile" depends="init">
+  <javac srcdir="${src}" destdir="build" />
+  </target>
+  <target name="dist" depends="compile">
+    <mkdir dir="${dist}"/>
+    <jar destfile="${dist}/tvc.jar" basedir="${build}">
+      <manifest>
+        <attribute name="Main-Class" value="emulator.tvc.Main"/>
+        <attribute name="Class-Path" value="."/>
+      </manifest>
+      <fileset dir="." includes="rom/*.BIN" />
+    </jar>
+  </target>
+  <target name="clean">
+    <delete dir="${build}"/>
+    <delete dir="${dist}"/>
+  </target>
+</project>
