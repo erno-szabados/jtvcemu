@@ -20,6 +20,7 @@ public class FileIO {
     public static final String ROM_TVC12_D4BIN = "/rom/TVC12_D4.BIN";
     public static final String ROM_TVC12_D3BIN = "/rom/TVC12_D3.BIN";
     public static final String ROM_TVC12_D7BIN = "/rom/TVC12_D7.BIN";
+    public static final String ROM_VTDOS_CRBIN = "/rom/VTDOS_CR.BIN";
     public static final int UPM_HEADER_SIZE = 128;
     public static final int UPM_NONBUFFERED_HEADER_SIZE = 16;
     public static final int UPM_HEADER_FILETYPE_OFFSET = 0x0;
@@ -49,82 +50,49 @@ public class FileIO {
     }
 
     public void loadCAS(String fileName) throws FileNotFoundException, IOException {
-        byte[] header = new byte[UPM_HEADER_SIZE];
-        byte[] nbheader = new byte[UPM_NONBUFFERED_HEADER_SIZE];
+
         FileInputStream fis = new FileInputStream(fileName);
         int size = (int) fis.getChannel().size();
         if (size < UPM_HEADER_SIZE) {
             throw new IOException("File smaller than UPM header:" + fileName);
         }
-        fis.read(header);
-        byte fileType = header[UPM_HEADER_FILETYPE_OFFSET];
-        int blockCount = ((header[UPM_HEADER_BLOCK_NUMBER_OFFSET_HI] << 8) & 0xFF00) | ((header[UPM_HEADER_BLOCK_NUMBER_OFFSET_LO] & 0x00FF));
-        // size in bytes
-        if (fileType != FILETYPE_NONBUFFERED) {
-            throw new IOException("Only non-buffered CAS files supported for now:" + fileName);
-        }
-        int dataSize = ((blockCount - 1) << 7) + header[UPM_HEADER_LAST_BLOCK_BYTES];
-        // substract nonbuffered header size
-        dataSize -= UPM_NONBUFFERED_HEADER_SIZE;
-        fis.read(nbheader);
-        log.write("CAS: type: " + (fileType == FILETYPE_NONBUFFERED ? "non-buffered" : "buffered"));
-        log.write("CAS: blocks: " + blockCount + ":" + header[UPM_HEADER_BLOCK_NUMBER_OFFSET_LO] + "-" + header[UPM_HEADER_BLOCK_NUMBER_OFFSET_HI]);
-        log.write("CAS: bytes: " + dataSize);
-        log.write("CAS: version " + nbheader[UPM_HEADER_NONBUFFERED_VERSION - 0x80]);
-
-        if (size < UPM_HEADER_SIZE + dataSize) {
-            throw new IOException("File smaller than reported data:" + fileName);
-        }
-
+        // substract header size
+        int dataStart = UPM_HEADER_SIZE + UPM_NONBUFFERED_HEADER_SIZE;
+        int dataSize  = size - dataStart;
+        fis.getChannel().position(dataStart);
         byte[] data = new byte[dataSize];
         fis.read(data);
-
-        // Start loading with U0
-        Memory.Page page = memory.getPageByName("U0");        
-        int pageDataSize = Math.min(dataSize, Memory.PAGE_SIZE - BASIC_OFFSET_START);
-        for (int i = 0; i < pageDataSize; i++) {
-            page.set(i + BASIC_OFFSET_START, data[i] & 0xFF);
-        }
-        int offset = 0;
-        if (dataSize > pageDataSize) {
-            dataSize -= pageDataSize;            
-            // Increase offset by amount of data loaded to page U0
-            offset += Memory.PAGE_SIZE - BASIC_OFFSET_START;
-            // More data left, load to page U1
-            page = memory.getPageByName("U1");
-            pageDataSize = Math.min(dataSize, Memory.PAGE_SIZE);
-            for (int i = 0; i < pageDataSize; i++) {
-                page.set(i, data[i + offset] & 0xFF);
-            }
-        }
-        if (dataSize > pageDataSize) {
-            dataSize -= pageDataSize;            
-            // Increase offset by amount of data loaded to page U1
-            offset += Memory.PAGE_SIZE;
-            // More data left, load to page U1
-            page = memory.getPageByName("U2");
-            pageDataSize = Math.min(dataSize, Memory.PAGE_SIZE);
-            for (int i = 0; i < pageDataSize; i++) {
-                page.set(i, data[i + offset] & 0xFF);
-            }
-        }
-        if (dataSize > pageDataSize) {
-            dataSize -= pageDataSize;            
-            // Increase offset by amount of data loaded to page U2
-            offset += Memory.PAGE_SIZE;
-            // More data left, load to page U1
-            page = memory.getPageByName("U3");
-            pageDataSize = Math.min(dataSize, Memory.PAGE_SIZE);
-            for (int i = 0; i < pageDataSize; i++) {
-                page.set(i, data[i + offset] & 0xFF);
-            }
-        }
-        dataSize -= pageDataSize;
-        if (dataSize != 0) {
-            log.write("Memory full, D:" + dataSize + "P:" + pageDataSize );
-        }
-
         fis.close();
+
+        int n = 0;
+        // Start loading with U0
+        Memory.Page page = memory.getPageByName("U0");
+        for (int i = BASIC_OFFSET_START; ((i < Memory.PAGE_SIZE) && (n < dataSize)); i++) {
+            page.set(i, data[n++] & 0xFF);
+        }
+
+        // If more data left, load to page U1
+        page = memory.getPageByName("U1");
+        for (int i = 0; ((i < Memory.PAGE_SIZE) && (n < dataSize)); i++) {
+            page.set(i, data[n++] & 0xFF);
+        }
+
+        // If more data left, load to page U2
+        page = memory.getPageByName("U2");
+        for (int i = 0; ((i < Memory.PAGE_SIZE) && (n < dataSize)); i++) {
+            page.set(i, data[n++] & 0xFF);
+        }
+
+        // If more data left, load to page U3
+        page = memory.getPageByName("U3");
+        for (int i = 0; ((i < Memory.PAGE_SIZE) && (n < dataSize)); i++) {
+            page.set(i, data[n++] & 0xFF);
+        }
+
+        dataSize -= n;
+        if (dataSize != 0) {
+            log.write("Memory full, D:" + dataSize);
+        }
     }
 
 
@@ -141,13 +109,18 @@ public class FileIO {
         byte imgBytes[] = new byte[size];
 
         InputStream fis = getClass().getResourceAsStream(fileName);
-        int result = fis.read(imgBytes);
+        int readlen = 0;
+        int result  = 0;
+        while ((result != (-1)) && (readlen != size)) {
+            result = fis.read(imgBytes, readlen, (size - readlen));
+            if (result > 0) readlen += result;
+        }
         fis.close();
-        if (result != imgBytes.length) {
-            throw new IOException("ROM file read error:" + fileName + " at:" + result);
+        if (readlen != imgBytes.length) {
+            throw new IOException("ROM file read error:" + fileName + " at:" + readlen);
         }
         for (int i = 0; i < size; i++) {
-            page.set(i + offset, imgBytes[i] & 0xFF);
+            page.setrom(i + offset, imgBytes[i] & 0xFF);
         }
         log.write("ROM " + fileName + " has been loaded into " + page.name + ":" + offset);
     }
@@ -277,9 +250,10 @@ public class FileIO {
      */
     public boolean loadRomSet() {
         try {
-            loadRom(ROM_TVC12_D4BIN, memory.SYS, Memory.ROM_SIZE, 0);
-            loadRom(ROM_TVC12_D3BIN, memory.SYS, Memory.ROM_SIZE, Memory.ROM_SIZE);
-            loadRom(ROM_TVC12_D7BIN, memory.EXT, Memory.ROM_SIZE, Memory.ROM_SIZE);
+            loadRom(ROM_TVC12_D4BIN, memory.SYS,  Memory.ROM_SIZE, 0);
+            loadRom(ROM_TVC12_D3BIN, memory.SYS,  Memory.ROM_SIZE, Memory.ROM_SIZE);
+            loadRom(ROM_TVC12_D7BIN, memory.EXT,  Memory.ROM_SIZE, Memory.ROM_SIZE);
+            loadRom(ROM_VTDOS_CRBIN, memory.CART, SDcartridge.ROM_SIZE, 0);
         } catch (FileNotFoundException e) {
             log.write(e.getMessage());
             return false;

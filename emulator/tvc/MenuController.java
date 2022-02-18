@@ -8,6 +8,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
+import java.awt.Dimension;
 import java.io.File;
 import java.io.IOException;
 import java.text.ParseException;
@@ -54,19 +55,39 @@ public class MenuController implements ActionListener, ItemListener {
         } else if (GUI.ACTIONCOMMAND_SCALE_SMOOTH.equals(e.getActionCommand())) {
             gui.screen.setScalingQuality(RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         } else if (GUI.ACTIONCOMMAND_COLORKILL_ON.equals(e.getActionCommand())) {
-            gui.screen.setColorKillEnable(1);
-        } else if (GUI.ACTIONCOMMAND_COLORKILL_OFF.equals(e.getActionCommand())) {
             gui.screen.setColorKillEnable(0);
+        } else if (GUI.ACTIONCOMMAND_COLORKILL_OFF.equals(e.getActionCommand())) {
+            gui.screen.setColorKillEnable(1);
+        } else if (GUI.ACTIONCOMMAND_SCREENSIZE_05X.equals(e.getActionCommand())) {
+            Dimension dim = new Dimension(gui.screen.IMG_XRES /  2, gui.screen.IMG_YRES / 2);
+            gui.screen.setPreferredSize(dim);
+            gui.mainFrame.pack();
+        } else if (GUI.ACTIONCOMMAND_SCREENSIZE_1X.equals(e.getActionCommand())) {
+            Dimension dim = new Dimension(gui.screen.IMG_XRES, gui.screen.IMG_YRES);
+            gui.screen.setPreferredSize(dim);
+            gui.mainFrame.pack();
+        } else if (GUI.ACTIONCOMMAND_SCREENSIZE_2X.equals(e.getActionCommand())) {
+            Dimension dim = new Dimension(2 * gui.screen.IMG_XRES, 2 * gui.screen.IMG_YRES);
+            gui.screen.setPreferredSize(dim);
+            gui.mainFrame.pack();
+        } else if (GUI.ACTIONCOMMAND_FULLSCREEN.equals(e.getActionCommand())) {
+            gui.SwitchFullScreen();
         } else if (GUI.ACTIONCOMMAND_SAVE_BIN.equals(e.getActionCommand())) {
             actionCommandSaveBinary();
         } else if (GUI.ACTIONCOMMAND_LOAD_BIN.equals(e.getActionCommand())) {
             actionCommandLoadBinary();
         } else if (GUI.ACTIONCOMMAND_LOAD_CAS.equals(e.getActionCommand())) {
             actionCommandLoadCas();
+        } else if (GUI.ACTIONCOMMAND_OPEN_SD0.equals(e.getActionCommand())) {
+            actionCommandOpenSD(0);
+        } else if (GUI.ACTIONCOMMAND_OPEN_SD1.equals(e.getActionCommand())) {
+            actionCommandOpenSD(1);
         } else if (GUI.ACTIONCOMMAND_RESET_COLD.equals(e.getActionCommand())) {
-            gui.tvc.reset(true);
+            gui.tvc.ColdReset = true;
         } else if (GUI.ACTIONCOMMAND_RESET_WARM.equals(e.getActionCommand())) {
-            gui.tvc.reset(false);
+            gui.tvc.WarmReset = true;
+        } else if (GUI.ACTIONCOMMAND_TRACE_ENABLE.equals(e.getActionCommand())) {
+            gui.TraceButtonsEnable();
         } else if (GUI.ACTIONCOMMAND_ABOUT.equals(e.getActionCommand())) {
             actionCommandAbout();
         }
@@ -75,8 +96,11 @@ public class MenuController implements ActionListener, ItemListener {
     private void actionCommandAbout() {
         JTextPane aboutPane = new JTextPane();
         aboutPane.setContentType("text/html");
-        aboutPane.setText("<html>Java TVC Emulator<br/>Version 0.1.1<br/>&copy;2003-2005 Hoffer G&aacute;bor<br/>&copy;2013 Szabados Ern&ouml;<br/></html>");
-        JOptionPane.showMessageDialog(null, aboutPane, "About", JOptionPane.INFORMATION_MESSAGE);
+        aboutPane.setText("<html>Java TVC Emulator<br/>Version 0.2.0<br/>" +
+                          "&copy;2003-2005 Hoffer G&aacute;bor<br/>" +
+                          "&copy;2013 Szabados Ern&ouml;<br/>" +
+                          "&copy;2018 Sebesty&eacute;n P&aacute;l<br/></html>");
+        JOptionPane.showMessageDialog(gui.mainFrame, aboutPane, "About", JOptionPane.INFORMATION_MESSAGE);
     }
 
     /**
@@ -217,8 +241,9 @@ public class MenuController implements ActionListener, ItemListener {
             fc.setFileSelectionMode(JFileChooser.FILES_ONLY);
             fc.setDialogTitle("Select CAS file for direct load.");
             fc.setApproveButtonText("Load");
-            FileFilter filter = new FileNameExtensionFilter("Casette files", "CAS", "cas");
+            FileFilter filter = new FileNameExtensionFilter("Casette files (*.cas)", "CAS", "cas");
             fc.addChoosableFileFilter(filter);
+            fc.setFileFilter(filter);
             int ret = fc.showOpenDialog(gui.mainFrame);
             if (ret == JFileChooser.APPROVE_OPTION) {
                 File file = fc.getSelectedFile();
@@ -226,10 +251,60 @@ public class MenuController implements ActionListener, ItemListener {
                 casPath = file.getParent();
                 prefs.put(CAS_DIR_KEY, casPath);
                 prefs.flush();
-                //log.write("Saving path:" + casPath + ":" + prefs.absolutePath());  
+                //log.write("Saving path:" + casPath + ":" + prefs.absolutePath());
             }
         } catch (IOException ioe) {
             log.write("Could not load CAS file: " + ioe.getMessage());
+        } catch (BackingStoreException bse) {
+            log.write("Could not save last used path: " + bse.getMessage());
+        } finally {
+            gui.tvc.start();
+            gui.screen.requestFocusInWindow();
+        }
+    }
+
+    private String getExtension(String filename) {
+        if (filename == null) {
+            return null;
+        }
+        int extensionPos = filename.lastIndexOf(".");
+        int lastUnixPos = filename.lastIndexOf("/");
+        int lastWindowsPos = filename.lastIndexOf("\\");
+        int lastSeparator = Math.max(lastUnixPos, lastWindowsPos);
+
+        return ((lastSeparator > extensionPos) ? "" : filename.substring(extensionPos + 1));
+    }
+
+    private void actionCommandOpenSD(int con) {
+        try {
+            gui.tvc.stop();
+            String imgPath = prefs.get(CAS_DIR_KEY, System.getProperty("user.home"));
+            log.write("Open SD image:" + imgPath);
+            final JFileChooser fc = new JFileChooser(new File(imgPath));
+            fc.setFileSelectionMode(JFileChooser.FILES_ONLY);
+            fc.setDialogTitle("Select SD card image " + con);
+            fc.setApproveButtonText("Open");
+            FileFilter filter = new FileNameExtensionFilter("Disk image files (*.dsk, *.img)", "DSK", "dsk", "IMG", "img");
+            fc.addChoosableFileFilter(filter);
+            fc.setFileFilter(filter);
+            filter = new FileNameExtensionFilter("Binary files (*.bin)", "BIN", "bin");
+            fc.addChoosableFileFilter(filter);
+            int ret = fc.showOpenDialog(gui.mainFrame);
+            if (ret == JFileChooser.APPROVE_OPTION) {
+                File file = fc.getSelectedFile();
+                String fname = file.getCanonicalPath();
+                String extension = getExtension(file.getName());
+                int state = (extension.equals("dsk") || extension.equals("DSK"))?
+                             SDcard.SD_STATE_IMG_NONSTD :
+                             SDcard.SD_STATE_INSERTED;
+                SDcartridge SDcart = (SDcartridge)gui.tvc.getMemory().CART;
+                SDcart.OpenDiskImage(fname, state, con);
+                imgPath = file.getParent();
+                prefs.put(CAS_DIR_KEY, imgPath);
+                prefs.flush();
+            }
+        } catch (IOException ioe) {
+            log.write("Could not open image file: " + ioe.getMessage());
         } catch (BackingStoreException bse) {
             log.write("Could not save last used path: " + bse.getMessage());
         } finally {
@@ -244,7 +319,7 @@ public class MenuController implements ActionListener, ItemListener {
             if (toggleButton.isSelected()) {
                 gui.tvc.stop();
             } else {
-                if (!gui.z80.running) {
+                if (!gui.tvc.running) {
                     gui.tvc.start();
                 }
             }

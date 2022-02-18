@@ -17,12 +17,7 @@ public class Memory {
 
         int mem[];
         String name;
-
-        // for inheritance
-        protected Page() {
-            mem = new int[PAGE_SIZE];
-            Arrays.fill(mem, 0);
-        }
+        boolean rom;
 
         /**
          * Construct new memory page.
@@ -33,11 +28,12 @@ public class Memory {
          * @param name name of page
          * @param video true if this is a video page.
          */
-        public Page(String name) {
+        public Page(String name, boolean rom) {
             mem = new int[PAGE_SIZE];
             Arrays.fill(mem, 0);
 
             this.name = name;
+            this.rom  = rom;
         }
 
         /**
@@ -57,86 +53,37 @@ public class Memory {
          * @param p
          */
         public void set(int addr, int p) {
+            if (!rom) {
+                mem[addr] = p;
+            }
+          /*  else {
+                String s = String.format("Write ROM: addr = 0x%04X  data = 0x%02X", addr, p);
+                log.write(s);
+            }*/
+        }
+
+        public void setrom(int addr, int p) {
             mem[addr] = p;
         }
     }
 
-    class VideoPage extends Page {
-
-        boolean changed[];
-        int maxA, minA;
-
-        public VideoPage(String name) {
-            // Vide page bytes are mark on modification and cleared when
-            // drawn.
-            changed = new boolean[PAGE_SIZE];
-            Arrays.fill(changed, false);
-
-            this.name = name;
-        }
-
-        /**
-         * Read byte from specified memory address of page.
-         *
-         * @param addr
-         * @return
-         */
-        public int get(int addr) {
-            return mem[addr];
-        }
-
-        /**
-         * Write byte to specified memory address of page.
-         *
-         * @param addr
-         * @param p
-         */
-        public void set(int addr, int p) {
-            try {
-                mem[addr] = p;
-
-                // Mark address as changed.
-                changed[addr] = true;
-                // this change affects the video RAM.
-                setVideoChanged(true);
-
-                // Only pages between minA and maxA will be redrawn.
-                // The minimum affected address is now increased
-                if (addr < minA) {
-                    minA = addr;
-                }
-                // The maximum affected address is now increased
-                if (addr > maxA) {
-                    maxA = addr;
-                }
-            } finally {
-            }
-        }
-    }
     /**
      * All the supported memory pages.
      */
     Page SYS, EXT, VID, CART, U0, U1, U2, U3, PAGES[];
     private Log log;
-    /**
-     * True if video RAM changed.
-     *
-     * queried and reset by Screen.
-     */
-    private boolean videoChanged;
 
     public Memory() {
-        log = Log.getInstance();
-        SYS = new Page("SYS");
-        EXT = new Page("EXT");
-        VID = new VideoPage("VID");
-        CART = new Page("CART");
-        U0 = new Page("U0");
-        U1 = new Page("U1");
-        U2 = new Page("U2");
-        U3 = new Page("U3");
+        log  = Log.getInstance();
+        SYS  = new Page("SYS", true);
+        EXT  = new Page("EXT", true);
+        VID  = new Page("VID", false);
+        CART = new SDcartridge(this, "SDCART");
+        U0 = new Page("U0", false);
+        U1 = new Page("U1", false);
+        U2 = new Page("U2", false);
+        U3 = new Page("U3", false);
         PAGES = new Page[4];
-        videoChanged = true;
     }
 
     public Page getPageByName(String name) {
@@ -160,24 +107,6 @@ public class Memory {
     }
 
     /**
-     * Get and set by screen.
-     *
-     * @return
-     */
-    public boolean isVideoChanged() {
-        return videoChanged;
-    }
-
-    /**
-     * Get and set by screen.
-     *
-     * @return
-     */
-    public void setVideoChanged(boolean videoChanged) {
-        this.videoChanged = videoChanged;
-    }
-
-    /**
      * Read byte from specified address of memory.
      *
      * Calculate page and offset.
@@ -187,9 +116,10 @@ public class Memory {
      */
     public final int getByte(int addr) {
 
-        int page = addr >> 14, offset = addr & 0x3fff;
+        int page = (addr >> 14) & 0x03, offset = addr & 0x3fff;
 
-        return PAGES[page].mem[offset];
+        //return PAGES[page].mem[offset];
+        return PAGES[page].get(offset);
     }
 
     /**
@@ -202,7 +132,7 @@ public class Memory {
      */
     public final void setByte(int addr, int p) {
 
-        int page = addr >> 14, offset = addr & 0x3fff;
+        int page = (addr >> 14) & 0x03, offset = addr & 0x3fff;
 
         PAGES[page].set(offset, p);
     }
@@ -243,21 +173,25 @@ public class Memory {
      */
     public void setPages(int p) {
 
-        String s = "";
+        //String s = String.format("page = 0x%02x  ", p);
 
         // Page 0.
         switch (p & 0x18) {
             case (0x00):
                 PAGES[0] = SYS;
-                s += "SYS";
+                //s += "SYS";
                 break;
             case (0x08):
                 PAGES[0] = CART;
-                s += "CART";
+                //s += "CART";
                 break;
             case (0x10):
                 PAGES[0] = U0;
-                s += "U0";
+                //s += "U0";
+                break;
+            case (0x18):
+                PAGES[0] = U3;
+                //s += "U3";
                 break;
             default:
                 // TODO what happens in the real machine?
@@ -267,17 +201,17 @@ public class Memory {
 
         // Page 1.
         PAGES[1] = U1;
-        s += "-U1";
+        //s += "-U1";
 
         // Page 2.
         switch (p & 0x20) {
             case (0x00):
                 PAGES[2] = VID;
-                s += "-VID";
+                //s += "-VID";
                 break;
             case (0x20):
                 PAGES[2] = U2;
-                s += "-U2";
+                //s += "-U2";
                 break;
             default:
                 // TODO what happens in the real machine?
@@ -289,19 +223,19 @@ public class Memory {
         switch (p & 0xc0) {
             case (0x00):
                 PAGES[3] = CART;
-                s += "-CART";
+                //s += "-CART";
                 break;
             case (0x40):
                 PAGES[3] = SYS;
-                s += "-SYS";
+                //s += "-SYS";
                 break;
             case (0x80):
                 PAGES[3] = U3;
-                s += "-U3";
+                //s += "-U3";
                 break;
             case (0xc0):
                 PAGES[3] = EXT;
-                s += "-EXT";
+                //s += "-EXT";
                 break;
             default:
                 // TODO what happens in the real machine?
@@ -309,7 +243,7 @@ public class Memory {
                 break;
         }
 
-        //log.write("Memory mapping has been changed: " + s);
+        //log.write("Memory map changed: " + s);
     }
 
     /**
@@ -326,8 +260,8 @@ public class Memory {
         int wByte;
 
         log.write("Memory dump");
-        log.write("Address: 00 01 02 03 04 05 06 07 - 08 09 0a 0b 0c 0d 0e 0f");
-        log.write("----------------------------------------------------------");
+        //log.write("Address: 00 01 02 03 04 05 06 07 - 08 09 0a 0b 0c 0d 0e 0f");
+        //log.write("----------------------------------------------------------");
 
         for (int i = 0; i < pSize; i++) {
             if (i % 16 == 0) {

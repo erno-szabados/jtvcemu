@@ -3,21 +3,19 @@
  */
 package emulator.tvc;
 
-import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
+import java.awt.event.*;
 
 /**
  * Collects TVC Keyboard input.
  */
-public class KeyboardListener implements KeyListener {
+public class KeyboardListener implements KeyListener, FocusListener {
 
-    TVC tvc;
-    Log log;
     Keyboard keyboard;
+    GUI gui;
 
-    public KeyboardListener(Keyboard keyboard) {
-        log = Log.getInstance();
+    public KeyboardListener(Keyboard keyboard, GUI gui) {
         this.keyboard = keyboard;
+        this.gui = gui;
     }
 
     public void keyTyped(KeyEvent e) {
@@ -25,7 +23,6 @@ public class KeyboardListener implements KeyListener {
     }
 
     public void keyPressed(KeyEvent e) {
-
         keyHandling(e, true);
     }
 
@@ -33,13 +30,30 @@ public class KeyboardListener implements KeyListener {
         keyHandling(e, false);
     }
 
-    public void keyHandling(KeyEvent e, boolean pressed) {
-        keyboard.setMatrix(e.getExtendedKeyCode(), pressed);
+    public void keyHandling(KeyEvent e, boolean pressed) { 
+        int keyCode = e.getExtendedKeyCode();
 
-        //keyboard.setMatrix(e.getKeyCode(), pressed);
-//        Log.getInstance().write("Pressed:" + e.getKeyCode() + ":"
-//                + e.getKeyChar() + ":" + e.getKeyLocation() + ":"
-//                + e.getKeyText(e.getKeyCode()) + "p:" + pressed);
-        return;
+        //Log.getInstance().write("keyCode: " + keyCode);
+        switch (keyCode) {
+            case KeyEvent.VK_F7:
+                if (pressed) gui.tvc.WarmReset = true;
+                break;
+            case KeyEvent.VK_F8:
+                if (pressed) gui.tvc.ColdReset = true;
+                break;
+            case KeyEvent.VK_F11:
+                if (pressed) gui.SwitchFullScreen();
+                break;
+            default:
+                keyboard.setMatrix(keyCode, pressed);
+                break;
+        }
+    }
+
+    public void focusGained(FocusEvent e) {
+    }
+
+    public void focusLost(FocusEvent e) {
+        keyboard.clearMatrix();
     }
 }

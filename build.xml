@@ -23,4 +23,7 @@
     <delete dir="${build}"/>
     <delete dir="${dist}"/>
   </target>
+  <target name="run" depends="dist">
+      <java jar="${dist}/tvc.jar" fork="true"/>
+  </target>
 </project>
