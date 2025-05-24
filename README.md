@@ -110,7 +110,8 @@ The TVC ROM is copyrighted by Videoton Zrt.: https://www.videoton.hu/
 ## Acknowledgments
 
 - MC6845 CRTC emulation is based on original VHDL code by Mike Stirling (2011)
-- The original authors published
+- The original authors
+- http://tvc.homeserver.hu/
 ---
 
 *For more details, refer to the source code and commit history.*
