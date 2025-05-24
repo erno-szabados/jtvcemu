@@ -88,7 +88,7 @@ Recent updates include:
 Contributions are welcome! Please open issues or pull requests for bug fixes, features, or suggestions.
 
 ## Emulator License
-Copyright 2015-2025  Gabor Hoffer, Erno Szabados, Pal Sebestyen
+Copyright 2003-2025  Gabor Hoffer, Erno Szabados, Pal Sebestyen
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
